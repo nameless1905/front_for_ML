@@ -4,6 +4,7 @@ import JsonView from './components/JsonView.vue'
 import PresetPicker from './components/PresetPicker.vue'
 import InferenceReport from './components/InferenceReport.vue'
 import CaseView from './components/CaseView.vue'
+import CasePicker from './components/CasePicker.vue'
 import { PRESETS, findPreset } from './presets.js'
 import { extractStructured } from './report.js'
 
@@ -122,6 +123,13 @@ async function send() {
   }
 }
 
+// Случай, выбранный из БД, подставляется в редактор как отформатированный JSON
+function loadCase(payload) {
+  input.value = JSON.stringify(payload, null, 2)
+  inputMode.value = 'preview'
+  save()
+}
+
 function cancel() {
   controller?.abort()
 }
@@ -178,6 +186,7 @@ onMounted(() => {
 onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
 
 const lineCount = computed(() => input.value.split('\n').length)
+const maxLineLength = computed(() => Math.max(20, ...input.value.split('\n').map((l) => l.length)) + 2)
 
 // Структурированный вывод модели (поле text ответа) — если удалось разобрать
 const viewMode = ref('report') // 'report' | 'json'
@@ -233,6 +242,7 @@ const prettyJson = computed(() =>
             Запрос <span class="field">prompt</span>
           </div>
           <div class="tools">
+            <CasePicker :disabled="loading" @select="loadCase" />
             <template v-if="inputMode === 'editor'">
               <button class="ghost" @click="formatInput" :disabled="!!parseError">Форматировать</button>
               <button class="ghost" @click="minifyInput" :disabled="!!parseError">Сжать</button>
@@ -254,17 +264,22 @@ const prettyJson = computed(() =>
           <CaseView :data="parsedInput" />
         </div>
         <div v-else class="editor">
-          <div class="gutter" aria-hidden="true">
-            <span v-for="n in lineCount" :key="n">{{ n }}</span>
+          <!-- Прокручивается .editor, а textarea растянута по содержимому, чтобы номера строк ехали вместе с текстом -->
+          <div class="editor-inner">
+            <div class="gutter" aria-hidden="true">
+              <span v-for="n in lineCount" :key="n">{{ n }}</span>
+            </div>
+            <textarea
+              v-model="input"
+              :rows="lineCount"
+              :cols="maxLineLength"
+              wrap="off"
+              @keydown="onKeydown"
+              @blur="save"
+              spellcheck="false"
+              placeholder='{ "features": [...] }'
+            ></textarea>
           </div>
-          <textarea
-            v-model="input"
-            :rows="lineCount"
-            @keydown="onKeydown"
-            @blur="save"
-            spellcheck="false"
-            placeholder='{ "features": [...] }'
-          ></textarea>
         </div>
 
         <div class="panel-foot">
@@ -489,17 +504,26 @@ h1 {
 /* Editor */
 .editor {
   flex: 1;
-  display: flex;
   min-height: 0;
   overflow: auto;
   background: rgba(2, 6, 23, 0.4);
 }
+.editor-inner {
+  display: flex;
+  min-height: 100%;
+  min-width: 100%;
+  width: max-content;
+}
 .gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   padding: 18px 10px 18px 14px;
   text-align: right;
   color: rgba(148, 163, 184, 0.35);
+  background: #0c1220;
   font-family: 'JetBrains Mono', monospace;
   font-size: 13.5px;
   line-height: 1.6;
@@ -507,7 +531,8 @@ h1 {
   border-right: 1px solid var(--border);
 }
 .editor textarea {
-  flex: 1;
+  flex: 1 0 auto;
+  display: block;
   resize: none;
   border: none;
   outline: none;
@@ -517,9 +542,7 @@ h1 {
   font-size: 13.5px;
   line-height: 1.6;
   white-space: pre;
-  overflow-y: hidden;
-  overflow-x: auto;
-  min-height: 100%;
+  overflow: hidden;
   caret-color: var(--accent);
 }
 

@@ -1,7 +1,7 @@
 // Хелперы для читаемого отображения входного случая (case JSON).
 
-// Коды пола в данных. Заполните, когда будет известна кодировка, например { '1': 'женский', '2': 'мужской' }
-export const SEX_LABELS = {}
+// Коды пола в данных (patient_context.sex)
+export const SEX_LABELS = { '0': 'мужской', '1': 'женский' }
 
 export const sexLabel = (code) =>
   code === null || code === undefined ? '—' : (SEX_LABELS[code] ?? `код ${code}`)
@@ -45,6 +45,27 @@ export function indexStatus(idx) {
   if (hi != null && idx.value > hi) return 'high'
   if (lo == null && hi == null) return 'unknown'
   return 'normal'
+}
+
+// Насколько значение вышло за ближайшую границу референса: { abs, pct } или null, если в норме / не с чем сравнить.
+// pct — от самой границы; при границе 0 процент не считается
+export function indexDeviation(idx) {
+  const status = indexStatus(idx)
+  if (status !== 'low' && status !== 'high') return null
+  const bound = status === 'low' ? idx.ref_range[0] : idx.ref_range[1]
+  const abs = idx.value - bound
+  return { abs, pct: bound ? (abs / Math.abs(bound)) * 100 : null }
+}
+
+const signed = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + formatNum(Math.abs(v))
+const pctFmt = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 })
+
+// «↑ +12,3 (+40%)»
+export function formatDeviation(dev) {
+  if (!dev) return ''
+  const arrow = dev.abs > 0 ? '↑' : '↓'
+  const pct = dev.pct == null ? '' : ` (${dev.pct > 0 ? '+' : '−'}${pctFmt.format(Math.abs(dev.pct))}%)`
+  return `${arrow} ${signed(dev.abs)}${pct}`
 }
 
 // { "Гемоглобин": {...} } → массив строк таблицы
